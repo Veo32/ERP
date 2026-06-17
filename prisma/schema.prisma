@@ -1,0 +1,503 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LocaleCode {
+  AR
+  EN
+  HE
+}
+
+enum UserRole {
+  ADMINISTRATOR
+  MANAGER
+  USER
+  VIEWER
+}
+
+enum ThemePreference {
+  LIGHT
+  DARK
+  SYSTEM
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  INCOME
+  EXPENSE
+}
+
+enum ValuationMethod {
+  FIFO
+  MOVING_AVERAGE
+}
+
+enum StockMovementType {
+  PURCHASE
+  SALE
+  ADJUSTMENT
+  TRANSFER
+  BUNDLE_EXPLOSION
+  MANUFACTURE
+}
+
+enum PriceListType {
+  BUYING
+  SELLING
+}
+
+enum AttachmentKind {
+  IMAGE
+  PDF
+  TECHNICAL_SHEET
+  OTHER
+}
+
+enum QualityInspectionMode {
+  NONE
+  OPTIONAL
+  REQUIRED
+}
+
+enum SerialStatus {
+  AVAILABLE
+  SOLD
+  RETURNED
+  MAINTENANCE
+  RETIRED
+}
+
+enum BackgroundJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+}
+
+model OrganizationAccount {
+  id        String    @id @default(cuid())
+  name      String
+  users     User[]
+  companies Company[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model User {
+  id            String            @id @default(cuid())
+  accountId     String
+  email         String            @unique
+  passwordHash  String?
+  name          String
+  avatarUrl     String?
+  defaultLocale LocaleCode        @default(AR)
+  theme         ThemePreference   @default(SYSTEM)
+  account       OrganizationAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  memberships   CompanyMember[]
+  activityLogs  ActivityLog[]
+  comments      Comment[]
+  mentions      CommentMention[] @relation("MentionedUser")
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}
+
+model Company {
+  id                   String              @id @default(cuid())
+  accountId            String
+  name                 String
+  legalName            String?
+  countryCode          String              @default("IL")
+  timezone             String              @default("Asia/Jerusalem")
+  defaultCurrency      String              @default("ILS")
+  defaultLanguage      LocaleCode          @default(AR)
+  fiscalYearStartMonth Int                 @default(1)
+  fiscalYearStartDay   Int                 @default(1)
+  account              OrganizationAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  members              CompanyMember[]
+  warehouses           Warehouse[]
+  chartOfAccounts      AccountingAccount[]
+  itemGroups           ItemGroup[]
+  items                Item[]
+  productBundles       ProductBundle[]
+  priceLists           PriceList[]
+  customers            Customer[]
+  suppliers            Supplier[]
+  taxTemplates         TaxTemplate[]
+  stockLedgerEntries   StockLedgerEntry[]
+  serialNumbers        SerialNumber[]
+  activityLogs         ActivityLog[]
+  comments             Comment[]
+  backgroundJobs       BackgroundJob[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+}
+
+model CompanyMember {
+  companyId           String
+  userId              String
+  role                UserRole   @default(USER)
+  assignedWarehouseId String?
+  company             Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user                User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  assignedWarehouse   Warehouse? @relation(fields: [assignedWarehouseId], references: [id])
+  createdAt           DateTime   @default(now())
+
+  @@id([companyId, userId])
+  @@index([assignedWarehouseId])
+}
+
+model AccountingAccount {
+  id        String              @id @default(cuid())
+  companyId String
+  parentId  String?
+  code      String
+  name      String
+  type      AccountType
+  company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent    AccountingAccount?  @relation("ChartTree", fields: [parentId], references: [id])
+  children  AccountingAccount[] @relation("ChartTree")
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+
+  @@unique([companyId, code])
+  @@index([parentId])
+}
+
+model Warehouse {
+  id                 String              @id @default(cuid())
+  companyId          String
+  code               String
+  name               String
+  address            String?
+  isDefault          Boolean             @default(false)
+  company            Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  assignedMembers    CompanyMember[]
+  defaultForGroups   ItemGroup[]         @relation("GroupDefaultWarehouse")
+  defaultForItems    Item[]              @relation("ItemDefaultWarehouse")
+  stockLedgerEntries StockLedgerEntry[]
+  serialNumbers      SerialNumber[]
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
+
+  @@unique([companyId, code])
+}
+
+model TaxTemplate {
+  id              String      @id @default(cuid())
+  companyId       String
+  name            String
+  rate            Decimal     @db.Decimal(5, 2)
+  company         Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  defaultForGroups ItemGroup[]
+  defaultForItems  Item[]
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([companyId, name])
+}
+
+model Uom {
+  id                     String                   @id @default(cuid())
+  code                   String                   @unique
+  nameAr                 String
+  nameEn                 String
+  precision              Int                      @default(2)
+  defaultPurchaseForItems Item[]                  @relation("DefaultPurchaseUom")
+  defaultSalesForItems    Item[]                  @relation("DefaultSalesUom")
+  conversionsFrom        UomConversion[]          @relation("ConversionFromUom")
+  conversionsTo          UomConversion[]          @relation("ConversionToUom")
+  stockLedgerEntries     StockLedgerEntry[]
+  bundleComponents       ProductBundleComponent[]
+  itemPrices             ItemPrice[]
+}
+
+model ItemGroup {
+  id                   String       @id @default(cuid())
+  companyId            String
+  parentId             String?
+  name                 String
+  slug                 String
+  description          String?
+  imageUrl             String?
+  defaultWarehouseId   String?
+  defaultTaxTemplateId String?
+  company              Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent               ItemGroup?   @relation("ItemGroupTree", fields: [parentId], references: [id])
+  children             ItemGroup[]  @relation("ItemGroupTree")
+  defaultWarehouse     Warehouse?   @relation("GroupDefaultWarehouse", fields: [defaultWarehouseId], references: [id])
+  defaultTaxTemplate   TaxTemplate? @relation(fields: [defaultTaxTemplateId], references: [id])
+  items                Item[]
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@unique([companyId, slug])
+  @@index([parentId])
+}
+
+model Item {
+  id                        String                @id @default(cuid())
+  companyId                 String
+  groupId                   String?
+  sku                       String
+  nameAr                    String
+  nameEn                    String?
+  description               String?
+  maintainsStock            Boolean               @default(true)
+  valuationMethod           ValuationMethod       @default(FIFO)
+  disabled                  Boolean               @default(false)
+  canSell                   Boolean               @default(true)
+  canBuy                    Boolean               @default(true)
+  reorderLevel              Decimal?              @db.Decimal(18, 4)
+  leadTimeDays              Int?
+  isRawMaterial             Boolean               @default(false)
+  requiresQualityInspection QualityInspectionMode @default(NONE)
+  barcode                   String?
+  imageUrl                  String?
+  defaultWarehouseId        String?
+  defaultPurchaseUomId      String?
+  defaultSalesUomId         String?
+  taxTemplateId             String?
+  company                   Company               @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  group                     ItemGroup?            @relation(fields: [groupId], references: [id])
+  defaultWarehouse          Warehouse?            @relation("ItemDefaultWarehouse", fields: [defaultWarehouseId], references: [id])
+  defaultPurchaseUom        Uom?                  @relation("DefaultPurchaseUom", fields: [defaultPurchaseUomId], references: [id])
+  defaultSalesUom           Uom?                  @relation("DefaultSalesUom", fields: [defaultSalesUomId], references: [id])
+  taxTemplate               TaxTemplate?          @relation(fields: [taxTemplateId], references: [id])
+  conversions               UomConversion[]
+  stockLedgerEntries        StockLedgerEntry[]
+  serialNumbers             SerialNumber[]
+  bundleShell               ProductBundle?        @relation("BundleShell")
+  bundleComponents          ProductBundleComponent[] @relation("BundleComponentItem")
+  itemPrices                ItemPrice[]
+  attachments               Attachment[]
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+
+  @@unique([companyId, sku])
+  @@index([groupId])
+  @@index([barcode])
+}
+
+model UomConversion {
+  id        String  @id @default(cuid())
+  itemId    String
+  fromUomId String
+  toUomId   String
+  factor    Decimal @db.Decimal(18, 6)
+  item      Item    @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  fromUom   Uom     @relation("ConversionFromUom", fields: [fromUomId], references: [id])
+  toUom     Uom     @relation("ConversionToUom", fields: [toUomId], references: [id])
+
+  @@unique([itemId, fromUomId, toUomId])
+}
+
+model StockLedgerEntry {
+  id              String            @id @default(cuid())
+  companyId       String
+  itemId          String
+  warehouseId     String
+  uomId           String?
+  quantityIn      Decimal           @default(0) @db.Decimal(18, 4)
+  quantityOut     Decimal           @default(0) @db.Decimal(18, 4)
+  unitCost        Decimal?          @db.Decimal(18, 4)
+  valuationMethod ValuationMethod
+  movementType    StockMovementType
+  postingDate     DateTime          @default(now())
+  sourceType      String?
+  sourceId        String?
+  company         Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  item            Item              @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  warehouse       Warehouse         @relation(fields: [warehouseId], references: [id])
+  uom             Uom?              @relation(fields: [uomId], references: [id])
+  createdAt       DateTime          @default(now())
+
+  @@index([companyId, itemId, warehouseId])
+  @@index([postingDate])
+}
+
+model SerialNumber {
+  id          String       @id @default(cuid())
+  companyId   String
+  itemId      String
+  warehouseId String?
+  serial      String
+  status      SerialStatus @default(AVAILABLE)
+  warrantyEnd DateTime?
+  company     Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  item        Item         @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  warehouse   Warehouse?   @relation(fields: [warehouseId], references: [id])
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+
+  @@unique([companyId, serial])
+  @@index([itemId])
+}
+
+model ProductBundle {
+  id             String                   @id @default(cuid())
+  companyId      String
+  itemId         String                   @unique
+  active         Boolean                  @default(true)
+  backgroundMode Boolean                  @default(true)
+  company        Company                  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  item           Item                     @relation("BundleShell", fields: [itemId], references: [id], onDelete: Cascade)
+  components     ProductBundleComponent[]
+  createdAt      DateTime                 @default(now())
+  updatedAt      DateTime                 @updatedAt
+}
+
+model ProductBundleComponent {
+  id              String        @id @default(cuid())
+  bundleId        String
+  componentItemId String
+  uomId           String?
+  quantity        Decimal       @db.Decimal(18, 4)
+  bundle          ProductBundle @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+  componentItem   Item          @relation("BundleComponentItem", fields: [componentItemId], references: [id])
+  uom             Uom?          @relation(fields: [uomId], references: [id])
+
+  @@unique([bundleId, componentItemId, uomId])
+}
+
+model PriceList {
+  id          String        @id @default(cuid())
+  companyId   String
+  name        String
+  type        PriceListType
+  currency    String
+  isDefault   Boolean       @default(false)
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  itemPrices  ItemPrice[]
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  @@unique([companyId, name])
+}
+
+model ItemPrice {
+  id          String    @id @default(cuid())
+  priceListId String
+  itemId      String
+  uomId       String?
+  customerId  String?
+  rate        Decimal   @db.Decimal(18, 4)
+  validFrom   DateTime?
+  validTo     DateTime?
+  priceList   PriceList @relation(fields: [priceListId], references: [id], onDelete: Cascade)
+  item        Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  uom         Uom?      @relation(fields: [uomId], references: [id])
+  customer    Customer? @relation(fields: [customerId], references: [id])
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([itemId, priceListId, customerId])
+  @@index([validFrom, validTo])
+}
+
+model Customer {
+  id         String      @id @default(cuid())
+  companyId  String
+  code       String
+  name       String
+  email      String?
+  phone      String?
+  priceNotes String?
+  company    Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  itemPrices ItemPrice[]
+  createdAt  DateTime    @default(now())
+  updatedAt  DateTime    @updatedAt
+
+  @@unique([companyId, code])
+}
+
+model Supplier {
+  id        String   @id @default(cuid())
+  companyId String
+  code      String
+  name      String
+  email     String?
+  phone     String?
+  leadTimeDays Int?
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, code])
+}
+
+model Attachment {
+  id          String         @id @default(cuid())
+  itemId      String?
+  entityType  String
+  entityId    String
+  kind        AttachmentKind @default(OTHER)
+  fileName    String
+  url         String
+  mimeType    String?
+  sizeBytes   Int?
+  item        Item?          @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  createdAt   DateTime       @default(now())
+
+  @@index([entityType, entityId])
+}
+
+model ActivityLog {
+  id             String   @id @default(cuid())
+  companyId      String
+  userId         String
+  documentType   String
+  documentId     String
+  action         String
+  beforeSnapshot Json?
+  afterSnapshot  Json?
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user           User     @relation(fields: [userId], references: [id])
+  createdAt      DateTime @default(now())
+
+  @@index([documentType, documentId])
+}
+
+model Comment {
+  id           String           @id @default(cuid())
+  companyId    String
+  userId       String
+  documentType String
+  documentId   String
+  body         String
+  company      Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  user         User             @relation(fields: [userId], references: [id])
+  mentions     CommentMention[]
+  createdAt    DateTime         @default(now())
+
+  @@index([documentType, documentId])
+}
+
+model CommentMention {
+  id        String  @id @default(cuid())
+  commentId String
+  userId    String
+  comment   Comment @relation(fields: [commentId], references: [id], onDelete: Cascade)
+  user      User    @relation("MentionedUser", fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([commentId, userId])
+}
+
+model BackgroundJob {
+  id        String              @id @default(cuid())
+  companyId String
+  type      String
+  payload   Json
+  status    BackgroundJobStatus @default(QUEUED)
+  attempts  Int                 @default(0)
+  lastError String?
+  company   Company             @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+}

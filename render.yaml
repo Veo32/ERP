@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: erp-next-render
+    runtime: node
+    plan: starter
+    region: frankfurt
+    buildCommand: npm install && npx prisma generate && npm run build
+    preDeployCommand: npx prisma db push
+    startCommand: npm run start
+    healthCheckPath: /
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: DATABASE_URL
+        fromDatabase:
+          name: erp-next-render-db
+          property: connectionString
+      - key: NEXT_PUBLIC_APP_NAME
+        value: "نظام إدارة الشركات"
+
+databases:
+  - name: erp-next-render-db
+    plan: basic-256mb
+    region: frankfurt
