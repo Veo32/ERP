@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import clsx from "clsx";
 import Link from "next/link";
@@ -17,7 +17,6 @@ export function AppShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="app-shell">
-      {/* Overlay for mobile menu */}
       {menuOpen && (
         <div
           className="sidebar-overlay"
@@ -48,7 +47,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           {sidebarLinks.map((link) => {
             const Icon = link.icon;
             const isActive = pathname === link.href;
-
             return (
               <Link
                 key={`${link.href}-${link.label}`}
