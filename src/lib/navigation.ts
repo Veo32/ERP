@@ -9,6 +9,7 @@ import {
   ReceiptText,
   Settings,
   ShoppingCart,
+  ShoppingBag,
   Tags,
   Users
 } from "lucide-react";
@@ -53,6 +54,7 @@ export const primaryModules = [
 
 export const sidebarLinks = [
   { label: "لوحة القيادة", href: "/desk", icon: BarChart3 },
+  { label: "نقطة البيع", href: "/pos", icon: ShoppingBag },
   { label: "المخازن", href: "/inventory", icon: Boxes },
   { label: "الأصناف", href: "/items", icon: Package },
   { label: "مجموعات الأصناف", href: "/item-groups", icon: Layers3 },
